@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.streamlit/secrets.toml
+
+# local-only docs / launchers (not needed for web deploy)
+BUILD_PLAN.md
+MORNING_TOOL_PACKAGE.md
+SETUP_GUIDE.md
+START_HERE.bat
+START_HERE.command
+
+# old build output (no longer used; web uses /tmp)
+abmedia-morning-tool.zip
