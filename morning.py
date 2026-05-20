@@ -151,7 +151,7 @@ def make_market_chart(date_str: str, stocks: list[tuple], crypto: list[tuple], o
     except ImportError:
         print("  ✗ Pillow 沒裝，跳過產圖（pip install Pillow）")
         return None
-    from datetime import datetime
+    from datetime import datetime, timedelta, timezone
 
     rows = stocks + crypto
     n_rows = len(rows)
@@ -180,7 +180,7 @@ def make_market_chart(date_str: str, stocks: list[tuple], crypto: list[tuple], o
 
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     month, day = dt.month, dt.day
-    now = datetime.now()
+    now = datetime.now(timezone(timedelta(hours=8)))
 
     # === Logo 右上（市場圖表專用 logo） ===
     logo_path = ASSETS_DIR / "ChartLogo.png"
