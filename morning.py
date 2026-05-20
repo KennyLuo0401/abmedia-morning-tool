@@ -451,7 +451,7 @@ H2-2 加密市場段：
 - 引入摘錄沒提到的對手公司、競品、相關事件
 - 補造法案、條例、政策名（GENIUS Act、MiCA 等）若摘錄沒提
 - 補造名人引述（Jack Dorsey、Sam Altman 等）若摘錄沒提
-
+{editor_notes_block}
 # 今日市場數據（用於開頭導語與行情段，務必使用這份數據）
 {market_table}
 
@@ -487,7 +487,13 @@ H2-2 加密市場段：
 """
 
 
-def build_prompt(today: str, market_table: str, source_articles: list[dict], samples: list[str]) -> str:
+def build_prompt(
+    today: str,
+    market_table: str,
+    source_articles: list[dict],
+    samples: list[str],
+    editor_notes: str = "",
+) -> str:
     src_blocks = []
     for i, art in enumerate(source_articles, 1):
         label = detect_source(art["url"])
@@ -507,11 +513,21 @@ def build_prompt(today: str, market_table: str, source_articles: list[dict], sam
     sample_blocks = [f"## 範例 {i}\n\n{s}" for i, s in enumerate(samples, 1)]
     samples_str = "\n\n---\n\n".join(sample_blocks)
 
+    notes = editor_notes.strip()
+    if notes:
+        editor_notes_block = (
+            "\n# 編輯指示（高優先 — 決定文章角度、重點取捨；不可違反忠實原則）\n"
+            f"{notes}\n"
+        )
+    else:
+        editor_notes_block = ""
+
     return PROMPT_HEADER.format(
         date=today,
         market_table=market_table,
         sources=sources_str,
         samples=samples_str,
+        editor_notes_block=editor_notes_block,
     )
 
 

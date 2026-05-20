@@ -63,6 +63,13 @@ with st.form("inputs"):
         placeholder="https://www.bloomberg.com/news/articles/...\nhttps://www.cnbc.com/...",
     )
 
+    editor_notes = st.text_area(
+        "編輯指示（可選 — 寫文章方向、重點、想突顯的角度，LLM 會優先照這個寫）",
+        height=120,
+        placeholder="例：今天主軸放 Fed 利率決議；加密段帶到 Strategy 增持；標題突顯川普關稅",
+        key="editor_notes",
+    )
+
     with st.expander("Bloomberg / CNBC 抓不到時，貼這裡（可選）"):
         bloomberg_paste = st.text_area(
             "Bloomberg 文章內文（全文貼上即可）",
@@ -156,7 +163,7 @@ if submitted:
         # 4. 組 prompt + 產圖
         st.write("**[4/4] 組 prompt + 產圖**")
         samples = load_samples()
-        prompt = build_prompt(date_str, market_table, source_articles, samples)
+        prompt = build_prompt(date_str, market_table, source_articles, samples, editor_notes)
         st.write(f"- :white_check_mark: Prompt 字數：{len(prompt):,}")
 
         chart_path = Path("/tmp") / f"market-chart-{date_str}.png"
