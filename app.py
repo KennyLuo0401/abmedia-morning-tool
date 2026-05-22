@@ -221,8 +221,8 @@ if submitted:
     # === 結果區 ===
     st.success("完成！下面複製 prompt 貼到網頁版 LLM 即可。")
 
-    st.subheader(":clipboard: Prompt（右上角有複製按鈕）")
-    st.code(prompt, language=None)
+    with st.expander(f"📋 Prompt（{len(prompt):,} 字 — 點標題收合 / 右上角有複製按鈕）", expanded=True):
+        st.code(prompt, language=None)
 
     col_a, col_b = st.columns(2)
     with col_a:
