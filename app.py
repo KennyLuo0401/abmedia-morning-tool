@@ -53,6 +53,9 @@ if not check_password():
 st.title(":sunrise: ABMedia 早報工具")
 st.caption("抓市場數據 + 鉅亨網〈美股盤後〉+ 補充新聞 → 產 prompt 給網頁版 LLM")
 
+if "supp_count" not in st.session_state:
+    st.session_state["supp_count"] = 1
+
 # === 輸入區 ===
 with st.form("inputs"):
     target_date = st.date_input("日期", value=date.today())
@@ -60,32 +63,64 @@ with st.form("inputs"):
     url_text = st.text_area(
         "補充來源 URL（一行一個，可留空）",
         height=120,
-        placeholder="https://www.bloomberg.com/news/articles/...\nhttps://www.cnbc.com/...",
+        placeholder="https://www.cnbc.com/...\nhttps://www.coindesk.com/...",
     )
 
     editor_notes = st.text_area(
-        "編輯指示（可選 — 寫文章方向、重點、想突顯的角度，LLM 會優先照這個寫）",
+        "編輯指示（最高指導原則 — 文章方向、重點、要突顯的角度）",
         height=120,
         placeholder="例：今天主軸放 Fed 利率決議；加密段帶到 Strategy 增持；標題突顯川普關稅",
         key="editor_notes",
     )
 
-    with st.expander("Bloomberg / CNBC 抓不到時，貼這裡（可選）"):
+    editor_materials = st.text_area(
+        "編輯素材（補來源沒有的事實 — 與來源同位階作為撰文事實依據）",
+        height=120,
+        placeholder="例：\n- Strategy 又加碼 2,500 BTC，平均成本 9.8 萬美元\n- ETH ETF 昨日淨流入 4,000 萬美元\n- BTC 在 105,200 美元橫盤、無重大催化",
+        key="editor_materials",
+    )
+
+    with st.expander("Bloomberg 內文（URL 抓不到時貼這裡）"):
         bloomberg_paste = st.text_area(
             "Bloomberg 文章內文（全文貼上即可）",
             height=150,
             placeholder="如果上面的 Bloomberg URL 抓不到，把文章全文貼這裡，工具會優先用這份",
             key="bloomberg_paste",
         )
-        cnbc_paste = st.text_area(
-            "CNBC 文章內文",
-            height=150,
-            placeholder="如果上面的 CNBC URL 抓不到，把文章全文貼這裡",
-            key="cnbc_paste",
-        )
+
+    header_cols = st.columns([3, 1, 1])
+    with header_cols[0]:
+        st.markdown(f"**補充來源內文 paste**（共 {st.session_state['supp_count']} 個）")
+    with header_cols[1]:
+        add_source = st.form_submit_button("➕ 新增來源")
+    with header_cols[2]:
+        remove_source = st.form_submit_button("➖ 移除最後")
+
+    for i in range(st.session_state["supp_count"]):
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st.text_input(
+                f"來源 {i + 1} 名稱",
+                key=f"supp_name_{i}",
+                placeholder="例：CNBC、Decrypt",
+            )
+        with cols[1]:
+            st.text_area(
+                f"來源 {i + 1} 內文",
+                key=f"supp_text_{i}",
+                height=120,
+                placeholder="貼上文章全文",
+            )
 
     no_cnyes = st.checkbox("跳過鉅亨網〈美股盤後〉自動抓取", value=False)
     submitted = st.form_submit_button(":zap: 產生 Prompt", type="primary")
+
+if add_source:
+    st.session_state["supp_count"] += 1
+    st.rerun()
+if remove_source and st.session_state["supp_count"] > 1:
+    st.session_state["supp_count"] -= 1
+    st.rerun()
 
 
 def _paste_to_article(text: str, label: str, fallback_url: str = "") -> dict | None:
@@ -125,45 +160,59 @@ if submitted:
             else:
                 st.write("- :warning: 鉅亨網沒找到今日〈美股盤後〉")
 
-        # 3. 額外 URL
+        # 3. 額外 URL（Bloomberg 抓不到才走 paste fallback）
         st.write(f"**[3/4] 抓 {len(urls)} 篇額外來源文章**")
-        paste_map = {
-            "Bloomberg Market Wrap": bloomberg_paste,
-            "CNBC Daily Open": cnbc_paste,
-        }
         for url in urls:
             label = detect_source(url)
             art = fetch_article(url)
             if art.get("error"):
-                # 若有貼上 fallback，優先用 paste 內容
-                paste_text = paste_map.get(label, "")
-                pasted = _paste_to_article(paste_text, label, url) if paste_text else None
-                if pasted:
-                    st.write(f"- :white_check_mark: {label}：使用貼上的內文 ({len(pasted['text'])} 字)")
-                    art = pasted
-                else:
-                    st.write(f"- :x: {label}：{art['error']}（沒貼上 fallback，跳過此來源）")
-                    continue
-            else:
-                st.write(f"- :white_check_mark: {label}：{art['title'][:50]} ({len(art['text'])} 字)")
+                if label == "Bloomberg Market Wrap" and bloomberg_paste.strip():
+                    pasted = _paste_to_article(bloomberg_paste, label, url)
+                    if pasted:
+                        st.write(f"- :white_check_mark: {label}：使用貼上的內文 ({len(pasted['text'])} 字)")
+                        source_articles.append(pasted)
+                        continue
+                st.write(f"- :x: {label}：{art['error']}（沒貼上 fallback，跳過此來源）")
+                continue
+            st.write(f"- :white_check_mark: {label}：{art['title'][:50]} ({len(art['text'])} 字)")
             source_articles.append(art)
 
-        # 也支援：URL 留空但有貼 fallback → 直接用 fallback
-        for label, paste_text in paste_map.items():
-            if not paste_text.strip():
-                continue
-            already_added = any(label in detect_source(a.get("url", "")) or a.get("title", "").startswith(label) for a in source_articles)
-            if already_added:
-                continue
-            pasted = _paste_to_article(paste_text, label)
+        # Bloomberg URL 留空但有貼 fallback → 直接用 fallback
+        if bloomberg_paste.strip() and not any(
+            "bloomberg.com" in a.get("url", "") for a in source_articles
+        ):
+            pasted = _paste_to_article(bloomberg_paste, "Bloomberg Market Wrap")
             if pasted:
-                st.write(f"- :white_check_mark: {label}：使用貼上的內文 ({len(pasted['text'])} 字)")
+                st.write(f"- :white_check_mark: Bloomberg Market Wrap：使用貼上的內文 ({len(pasted['text'])} 字)")
                 source_articles.append(pasted)
+
+        # 動態補充 paste 清單
+        for i in range(st.session_state["supp_count"]):
+            name = (st.session_state.get(f"supp_name_{i}") or "").strip()
+            text = (st.session_state.get(f"supp_text_{i}") or "").strip()
+            if not text:
+                continue
+            label = name or f"補充來源 {i + 1}"
+            pasted = _paste_to_article(text, label)
+            if not pasted:
+                st.write(f"- :warning: {label}：內文太短 ({len(text)} 字 < 300)，跳過")
+                continue
+            pasted["title"] = name or pasted["title"]
+            pasted["_label"] = label
+            st.write(f"- :white_check_mark: {label}：貼上的內文 ({len(pasted['text'])} 字)")
+            source_articles.append(pasted)
 
         # 4. 組 prompt + 產圖
         st.write("**[4/4] 組 prompt + 產圖**")
         samples = load_samples()
-        prompt = build_prompt(date_str, market_table, source_articles, samples, editor_notes)
+        prompt = build_prompt(
+            date_str,
+            market_table,
+            source_articles,
+            samples,
+            editor_notes,
+            editor_materials,
+        )
         st.write(f"- :white_check_mark: Prompt 字數：{len(prompt):,}")
 
         chart_path = Path("/tmp") / f"market-chart-{date_str}.png"

@@ -444,18 +444,20 @@ H2-2 加密市場段：
 - 禁寫：BTC / ETH 以外的任何單一幣種（SOL、XRP、DOGE、ADA、AVAX、SUI 等一律不要寫）
 
 # 忠實原則（最高優先，違反就視為失敗）
-本文所有「數字／日期／百分比／金額／人名／職稱／機構名／產品名／競爭對手」必須在下方「來源材料」中明確出現過。摘錄沒有的事實，一律不要寫。寧可少一個錨點、文章變短，也絕對禁止：
+本文所有「數字／日期／百分比／金額／人名／職稱／機構名／產品名／競爭對手」必須在下方「來源材料」或「編輯素材」中明確出現過。摘錄沒有的事實，一律不要寫。寧可少一個錨點、文章變短，也絕對禁止：
 - 補全人名、職稱、機構（摘錄寫 "Powell" 就寫 Powell，不擴成「聯準會主席 Jerome Powell」）
 - 推測或補造日期、百分比、金額、版本號
 - 補造市場反應、股價走勢、業界譁然等延伸事件
 - 引入摘錄沒提到的對手公司、競品、相關事件
 - 補造法案、條例、政策名（GENIUS Act、MiCA 等）若摘錄沒提
 - 補造名人引述（Jack Dorsey、Sam Altman 等）若摘錄沒提
+
+額外規則：編輯指示（下方）提到的方向，若來源材料與編輯素材均無對應事實，則該方向略過，不得用模型自身知識補造。
 {editor_notes_block}
 # 今日市場數據（用於開頭導語與行情段，務必使用這份數據）
 {market_table}
-
-# 來源材料（撰文事實只能用這裡的內容）
+{editor_materials_block}
+# 來源材料（撰文事實只能用這裡的內容，連同編輯素材構成事實合法區）
 
 {sources}
 
@@ -493,10 +495,11 @@ def build_prompt(
     source_articles: list[dict],
     samples: list[str],
     editor_notes: str = "",
+    editor_materials: str = "",
 ) -> str:
     src_blocks = []
     for i, art in enumerate(source_articles, 1):
-        label = detect_source(art["url"])
+        label = art.get("_label") or detect_source(art.get("url", ""))
         if art.get("error"):
             src_blocks.append(
                 f"## 來源 {i}：{label}\nURL：{art['url']}\n（抓取失敗：{art['error']} — 請忽略此來源）"
@@ -516,11 +519,20 @@ def build_prompt(
     notes = editor_notes.strip()
     if notes:
         editor_notes_block = (
-            "\n# 編輯指示（高優先 — 決定文章角度、重點取捨；不可違反忠實原則）\n"
+            "\n# 編輯指示（最高指導原則 — 決定文章角度、重點取捨、要突顯什麼；事實仍須來自來源材料或編輯素材）\n"
             f"{notes}\n"
         )
     else:
         editor_notes_block = ""
+
+    materials = editor_materials.strip()
+    if materials:
+        editor_materials_block = (
+            "\n# 編輯素材（編輯提供之事實，與來源材料同位階；可作為撰文事實依據）\n"
+            f"{materials}\n"
+        )
+    else:
+        editor_materials_block = ""
 
     return PROMPT_HEADER.format(
         date=today,
@@ -528,6 +540,7 @@ def build_prompt(
         sources=sources_str,
         samples=samples_str,
         editor_notes_block=editor_notes_block,
+        editor_materials_block=editor_materials_block,
     )
 
 
