@@ -11,6 +11,8 @@ from pathlib import Path
 import streamlit as st
 
 from morning import (
+    CRYPTO_COINS,
+    STOCK_SYMBOLS,
     build_prompt,
     detect_source,
     fetch_article,
@@ -21,6 +23,7 @@ from morning import (
     format_price,
     load_samples,
     make_market_chart,
+    resolve_crypto_tickers,
 )
 
 st.set_page_config(page_title="ABMedia 早報工具", page_icon=":sunrise:", layout="centered")
@@ -60,6 +63,30 @@ if "supp_keys" not in st.session_state:
 # === 輸入區 ===
 with st.form("inputs"):
     target_date = st.date_input("日期", value=date.today())
+
+    with st.expander("市場標的（勾選預設 + 自訂新增）", expanded=False):
+        st.markdown("**預設標的**（取消勾選即不抓）")
+        stock_checks: list[bool] = []
+        cols = st.columns(len(STOCK_SYMBOLS))
+        for col, (name, _sym) in zip(cols, STOCK_SYMBOLS):
+            with col:
+                stock_checks.append(st.checkbox(name, value=True, key=f"def_stk_{name}"))
+        crypto_checks: list[bool] = []
+        cols = st.columns(len(CRYPTO_COINS))
+        for col, (name, _cid) in zip(cols, CRYPTO_COINS):
+            with col:
+                crypto_checks.append(st.checkbox(name, value=True, key=f"def_cry_{name}"))
+
+        extra_stock_text = st.text_area(
+            "新增股指 / 個股（Yahoo ticker，一行一個，例：TSLA、SPCX、^RUT、GC=F）",
+            height=80,
+            key="extra_stocks",
+        )
+        extra_crypto_text = st.text_area(
+            "新增加密（ticker，一行一個，例：SOL、XRP、DOGE）",
+            height=80,
+            key="extra_crypto",
+        )
 
     url_text = st.text_area(
         "補充來源 URL（一行一個，可留空）",
@@ -151,8 +178,21 @@ if submitted:
     with status:
         # 1. 市場數據
         st.write("**[1/4] 抓市場數據**")
-        stocks = fetch_stocks()
-        crypto = fetch_crypto()
+
+        selected_stocks = [s for s, checked in zip(STOCK_SYMBOLS, stock_checks) if checked]
+        extra_stock_tickers = [t.strip().upper() for t in extra_stock_text.splitlines() if t.strip()]
+        selected_stocks += [(t, t) for t in extra_stock_tickers]
+
+        selected_crypto = [c for c, checked in zip(CRYPTO_COINS, crypto_checks) if checked]
+        extra_crypto_tickers = [t for t in extra_crypto_text.splitlines() if t.strip()]
+        known_extra, unknown_extra = resolve_crypto_tickers(extra_crypto_tickers)
+        existing_ids = {cid for _, cid in selected_crypto}
+        selected_crypto += [(t, cid) for t, cid in known_extra if cid not in existing_ids]
+        for u in unknown_extra:
+            st.write(f"- :warning: 加密 ticker `{u}` 不在 mapping 表，跳過。可手動加進 `morning.py` `CRYPTO_TICKER_MAP`")
+
+        stocks = fetch_stocks(selected_stocks)
+        crypto = fetch_crypto(selected_crypto)
         for name, price, change in stocks + crypto:
             if price is not None:
                 st.write(f"- {name}: {format_price(price)} ({change:+.2f}%)")

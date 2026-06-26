@@ -75,6 +75,55 @@ CRYPTO_COINS = [
     ("ETH", "ethereum"),
 ]
 
+# ticker → CoinGecko coin id（常見 ~30 大幣，使用者打 ticker 自動轉）
+CRYPTO_TICKER_MAP = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "XRP": "ripple",
+    "BNB": "binancecoin",
+    "DOGE": "dogecoin",
+    "ADA": "cardano",
+    "TRX": "tron",
+    "AVAX": "avalanche-2",
+    "SUI": "sui",
+    "LINK": "chainlink",
+    "DOT": "polkadot",
+    "MATIC": "matic-network",
+    "LTC": "litecoin",
+    "BCH": "bitcoin-cash",
+    "NEAR": "near",
+    "ATOM": "cosmos",
+    "UNI": "uniswap",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "APT": "aptos",
+    "FIL": "filecoin",
+    "ICP": "internet-computer",
+    "HBAR": "hedera-hashgraph",
+    "INJ": "injective-protocol",
+    "RNDR": "render-token",
+    "AAVE": "aave",
+    "TON": "the-open-network",
+    "TIA": "celestia",
+    "SHIB": "shiba-inu",
+}
+
+
+def resolve_crypto_tickers(tickers: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
+    """把 ticker 清單轉成 (ticker, coin_id) tuples；未知 ticker 另外回傳。"""
+    known: list[tuple[str, str]] = []
+    unknown: list[str] = []
+    for t in tickers:
+        t = t.strip().upper()
+        if not t:
+            continue
+        if t in CRYPTO_TICKER_MAP:
+            known.append((t, CRYPTO_TICKER_MAP[t]))
+        else:
+            unknown.append(t)
+    return known, unknown
+
 
 # === 市場數據 ===
 def _yf_fetch_one(sym: str) -> tuple:
@@ -94,10 +143,11 @@ def _yf_fetch_one(sym: str) -> tuple:
         return None, None, str(e)
 
 
-def fetch_stocks() -> list[tuple]:
+def fetch_stocks(symbols: list[tuple[str, str]] | None = None) -> list[tuple]:
     """從 Yahoo Finance 抓股指最新收盤 + 日漲跌"""
+    symbols = symbols if symbols is not None else STOCK_SYMBOLS
     rows = []
-    for name, sym in STOCK_SYMBOLS:
+    for name, sym in symbols:
         price, change, err = _yf_fetch_one(sym)
         if err:
             print(f"  ✗ {name} 抓取失敗：{err}")
@@ -105,21 +155,24 @@ def fetch_stocks() -> list[tuple]:
     return rows
 
 
-def fetch_crypto() -> list[tuple]:
-    """從 CoinGecko 抓 BTC/ETH 即時 + 真正 24h 滾動漲跌"""
+def fetch_crypto(coins: list[tuple[str, str]] | None = None) -> list[tuple]:
+    """從 CoinGecko 抓即時價格 + 真正 24h 滾動漲跌"""
+    coins = coins if coins is not None else CRYPTO_COINS
     rows = []
-    ids = ",".join(c[1] for c in CRYPTO_COINS)
+    if not coins:
+        return rows
+    ids = ",".join(c[1] for c in coins)
     url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd&include_24hr_change=true"
     try:
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         data = r.json()
-        for name, coin_id in CRYPTO_COINS:
+        for name, coin_id in coins:
             d = data.get(coin_id, {})
             rows.append((name, d.get("usd"), d.get("usd_24h_change")))
     except Exception as e:
         print(f"  ✗ 加密貨幣抓取失敗：{e}")
-        for name, _ in CRYPTO_COINS:
+        for name, _ in coins:
             rows.append((name, None, None))
     return rows
 
@@ -153,7 +206,7 @@ def make_market_chart(date_str: str, stocks: list[tuple], crypto: list[tuple], o
         return None
     from datetime import datetime, timedelta, timezone
 
-    rows = stocks + crypto
+    rows = [(n, p, c, False) for n, p, c in stocks] + [(n, p, c, True) for n, p, c in crypto]
     n_rows = len(rows)
     table_top = 160
     row_h = 60
@@ -219,7 +272,7 @@ def make_market_chart(date_str: str, stocks: list[tuple], crypto: list[tuple], o
 
     # Data rows
     y = table_top + row_h
-    for idx, (name, price, change) in enumerate(rows):
+    for idx, (name, price, change, is_crypto) in enumerate(rows):
         if idx > 0:
             draw.line([(table_left, y), (table_right, y)], fill=GRID, width=1)
         if price is None:
@@ -234,8 +287,15 @@ def make_market_chart(date_str: str, stocks: list[tuple], crypto: list[tuple], o
             y += row_h
             continue
 
-        is_crypto = name in ("BTC", "ETH")
-        price_str = f"{price:,.0f}" if is_crypto else f"{price:,.2f}"
+        if is_crypto:
+            if price >= 1000:
+                price_str = f"{price:,.0f}"
+            elif price >= 1:
+                price_str = f"{price:,.2f}"
+            else:
+                price_str = f"{price:,.4f}"
+        else:
+            price_str = f"{price:,.2f}"
         if change > 0:
             color, sign = GREEN, "+"
         elif change < 0:
